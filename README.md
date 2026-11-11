@@ -1,31 +1,31 @@
-# Remix Vary Cookie Repro
+# Remix `Vary` lowercasing repro
 
-A minimal Remix application starter with a home page.
+`Vary` from `remix/headers` lowercases every header name it writes, and `compression()` rewrites every response's `Vary` through it. So an action that answers `Vary: Cookie` sends `Vary: cookie, accept-encoding`. Safari only varies its HTTP cache on cookies for a name spelled exactly `Cookie`, so it gives one user's private answer to another user in the same browser.
 
-## Starter Shape
+The first commit is `npx remix@3.2.0 new`. The second adds the repro:
 
-- `app/actions/controller.tsx` owns the top-level route actions.
-- `app/actions/home-page.tsx` and `app/actions/document.tsx` render the route-owned starter UI.
-- `app/actions/public/` contains the browser runtime entry and interactive prompt button.
-- `app/routes.ts` defines the shared route contract used by server and browser modules for type-safe hrefs.
-- `app/router.ts` wires routes to handlers and installs the standard Remix component renderer used by actions.
-- `app/assets.ts` owns the server-side asset pipeline used by the asset route and render middleware.
-- Root `public/` contains static files served unchanged from the app root.
+- `app/router.ts` adds `compression()`.
+- `/greeting` answers `Hello, <user cookie>!` with `Cache-Control: private, max-age=60` and `Vary: Cookie`.
+- `/repro` sets `user=alice`, fetches `/greeting`, sets `user=bob`, fetches it again, and prints both answers.
+- `app/actions/controller.test.ts` checks the `Vary` header `/greeting` sends.
 
-## Growing The App
-
-- Put top-level route actions in `app/actions/controller.tsx`.
-- Add `app/actions/<route-key>/controller.tsx` when a nested route map needs its own actions or middleware.
-- Add directories like `app/data/` or `test/` when the app actually needs them.
-- Move shared UI into `app/ui/` once more than one route needs it.
-
-## Commands
+## Steps
 
 ```sh
 npm i
-npm run dev
-npm run hmr
-npm run start
 npm test
-npm run typecheck
+PORT=44100 npm start
+curl -s -o /dev/null -D - -H 'Accept-Encoding: gzip' http://localhost:44100/greeting
 ```
+
+Then open http://localhost:44100/repro in Safari, and in Chrome or Firefox.
+
+## Expected
+
+- `npm test` passes, and `curl` shows `Vary: Cookie, Accept-Encoding`.
+- Every browser asks the server again for bob: `As bob: Hello, bob!`.
+
+## Actual
+
+- `npm test` fails with `"cookie, accept-encoding" !== "Cookie, Accept-Encoding"`, and `curl` shows `vary: cookie, accept-encoding`.
+- Safari answers bob from the copy it kept for alice: `As bob: Hello, alice!`, with the same response number. Chrome and Firefox ask the server again.
